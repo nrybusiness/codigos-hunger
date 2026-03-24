@@ -172,6 +172,11 @@ function doPost(e) {
         itemsParaInsertar.push({ nombre: "DOMICILIO", cant: 1 });
     }
 
+    let existeEmp = itemsParaInsertar.some(item => String(item.nombre).toUpperCase() === "COSTO EMPAQUE");
+    if ((tipo_pedido === "DOMICILIO" || tipo_pedido === "PARA LLEVAR") && !existeEmp) {
+        itemsParaInsertar.push({ nombre: "COSTO EMPAQUE", cant: 1 });
+    }
+
     const baseTurno = String(p.turno_temp || "0000").trim();
     const timestampID = Date.now().toString(36).toUpperCase().slice(-6); 
     const idOficial = celular ? `${celular}-${baseTurno}-${timestampID}` : `INV-${baseTurno}-${timestampID}`;
@@ -200,22 +205,22 @@ function doPost(e) {
       let contadorSalsas = 0;
       let filas = itemsParaInsertar.map(item => {
          let precioBase = preciosDB[item.nombre] !== undefined ? preciosDB[item.nombre] : 0;
+         if (item.nombre === "COSTO EMPAQUE") precioBase = COSTO_EMPAQUE_FIJO;
          let catOficial = catMap[item.nombre] || "";
-         let precioEmpaque = ((tipo_pedido === "DOMICILIO" || tipo_pedido === "PARA LLEVAR") && reqEmpaque[item.nombre]) ? COSTO_EMPAQUE_FIJO : 0;
 
          let totalCalculado = 0;
 
          if (catOficial === "SALSA") {
              for (let i = 0; i < item.cant; i++) {
                  if (contadorSalsas < 2) {
-                     totalCalculado += precioEmpaque; 
+                     totalCalculado += 0; 
                  } else {
-                     totalCalculado += precioBase + precioEmpaque; 
+                     totalCalculado += precioBase; 
                  }
                  contadorSalsas++;
              }
          } else {
-             totalCalculado = (precioBase + precioEmpaque) * item.cant;
+             totalCalculado = precioBase * item.cant;
          }
 
          return [idOficial, item.nombre, item.cant, estadoInicial, fechaActual, nombre, celular, notas, totalCalculado, tipo_pedido, metodo_pago, "", direccion];
@@ -269,7 +274,7 @@ function obtenerMenuPOS() {
   for (let prod in mapPOS) {
     let catOficial = catMap[prod] || "PRINCIPAL"; 
     
-    if (catOficial.includes("INGREDIENTE") || prod === "EMPAQUE LLEVAR") continue;
+    if (catOficial.includes("INGREDIENTE") || prod === "EMPAQUE LLEVAR" || prod === "COSTO EMPAQUE") continue;
 
     catalogo.push({ 
         nombre: prod, 
@@ -317,6 +322,13 @@ function guardarPedidoPOS(clienteObj, carritoJSON) {
              }
          }
          carrito.push({nombre: "DOMICILIO", cant: 1, precioTotalCalculado: pDom});
+     }
+  }
+
+  if (tipo_pedido === "DOMICILIO" || tipo_pedido === "PARA LLEVAR") {
+     let existeEmp = carrito.find(i => String(i.nombre).toUpperCase() === "COSTO EMPAQUE");
+     if (!existeEmp) {
+         carrito.push({nombre: "COSTO EMPAQUE", cant: 1, precioTotalCalculado: COSTO_EMPAQUE_FIJO});
      }
   }
 
@@ -380,6 +392,13 @@ function modificarPedidoPOS(idAEditar, clienteObj, carritoJSON) {
              }
          }
          carrito.push({nombre: "DOMICILIO", cant: 1, precioTotalCalculado: pDom});
+     }
+  }
+
+  if (tipo_pedido === "DOMICILIO" || tipo_pedido === "PARA LLEVAR") {
+     let existeEmp = carrito.find(i => String(i.nombre).toUpperCase() === "COSTO EMPAQUE");
+     if (!existeEmp) {
+         carrito.push({nombre: "COSTO EMPAQUE", cant: 1, precioTotalCalculado: COSTO_EMPAQUE_FIJO});
      }
   }
 
@@ -598,10 +617,7 @@ function obtenerPedidosKDS() {
           precioUnitario = precioGuardadoTotal / cantItem;
       } else {
           precioUnitario = precios[nombreProd] !== undefined ? precios[nombreProd] : 0;
-          let tipoP = d[i][9] ? String(d[i][9]).trim().toUpperCase() : "LOCAL";
-          if ((tipoP === "DOMICILIO" || tipoP === "PARA LLEVAR") && reqEmpaque[nombreProd]) {
-              precioUnitario += COSTO_EMPAQUE_FIJO;
-          }
+          if (nombreProd === "COSTO EMPAQUE") precioUnitario = COSTO_EMPAQUE_FIJO;
           precioGuardadoTotal = precioUnitario * cantItem;
       }
 
