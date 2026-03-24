@@ -493,18 +493,15 @@
 
     function cambiarTipoPedido() {
         let tipo = document.getElementById('posTipo').value;
-        let idxDom = carritoPOS.findIndex(i => i.nombre === "DOMICILIO");
+        carritoPOS = carritoPOS.filter(i => !i.domAuto);
 
         if (tipo === "DOMICILIO") {
-            if (idxDom === -1) {
-                let domItem = menuPOSGlobal.find(m => m.nombre === "DOMICILIO");
-                let precioDom = domItem ? domItem.precio : 0;
-                carritoPOS.push({nombre: "DOMICILIO", precio: precioDom, cant: 1, requiereEmpaque: false, categoria: "", precioEditado: false, domAuto: true});
-            }
-        } else {
-            if (idxDom !== -1 && carritoPOS[idxDom].domAuto) {
-                carritoPOS.splice(idxDom, 1);
-            }
+            let domItem = menuPOSGlobal.find(m => m.nombre === "DOMICILIO");
+            let precioDom = domItem ? domItem.precio : 0;
+            carritoPOS.push({nombre: "DOMICILIO", precio: precioDom, cant: 1, requiereEmpaque: false, categoria: "", precioEditado: false, domAuto: true});
+            carritoPOS.push({nombre: "COSTO EMPAQUE", precio: 2000, cant: 1, requiereEmpaque: false, categoria: "", precioEditado: false, domAuto: true});
+        } else if (tipo === "PARA LLEVAR") {
+            carritoPOS.push({nombre: "COSTO EMPAQUE", precio: 2000, cant: 1, requiereEmpaque: false, categoria: "", precioEditado: false, domAuto: true});
         }
         dibujarCarritoPOS();
     }
@@ -558,19 +555,17 @@
 
           carritoPOS = [];
           ticket.itemsObj.forEach(item => {
-             if(item.nombre !== "DOMICILIO" && !item.nombre.startsWith("EXTRA:")) {
+             if(item.nombre !== "DOMICILIO" && item.nombre !== "COSTO EMPAQUE" && !item.nombre.startsWith("EXTRA:")) {
                  let basePriceInfo = menuPOSGlobal.find(m => m.nombre === item.nombre);
                  let basePrice = basePriceInfo ? basePriceInfo.precio : (item.precio || 0);
                  let catOficial = basePriceInfo ? basePriceInfo.categoria : "";
                  let precioAUsar = basePrice;
                  let fueEditado = false;
                  
-                 let recargo = (basePriceInfo && basePriceInfo.requiereEmpaque && (tipoStr === "DOMICILIO" || tipoStr === "PARA LLEVAR")) ? 2000 : 0;
-                 
                  if (catOficial === "SALSA") {
                      precioAUsar = basePrice;
                      fueEditado = false;
-                 } else if (item.precio !== (basePrice + recargo) && item.precio !== basePrice) {
+                 } else if (item.precio !== basePrice) {
                      precioAUsar = item.precio; 
                      fueEditado = true;
                  }
@@ -583,7 +578,7 @@
                      categoria: catOficial,
                      precioEditado: fueEditado
                  });
-             } else if (item.nombre === "DOMICILIO") {
+             } else if (item.nombre === "DOMICILIO" || item.nombre === "COSTO EMPAQUE") {
                  carritoPOS.push({ 
                      nombre: item.nombre, 
                      cant: item.cant, 
@@ -596,7 +591,6 @@
              }
           });
           
-          // CORRECCIÓN TURNOS NUEVOS
           document.getElementById('tituloModalPOS').innerText = "✏️ Modificar Pedido #" + (id.split('-').length > 2 ? id.split('-')[id.split('-').length - 2] : id.split('-').pop());
           document.getElementById('btnEnviarPOS').innerHTML = "🔄 Actualizar Pedido";
           
@@ -665,21 +659,16 @@
       const tbody = document.getElementById('bodyCarritoPOS');
       tbody.innerHTML = "";
       let granTotal = 0;
-      let tipoPedido = document.getElementById('posTipo').value;
       let contadorSalsas = 0;
 
       carritoPOS.forEach((item, idx) => {
         let precioAAplicar = item.precio;
         let totalFila = 0;
 
-        if (item.requiereEmpaque && (tipoPedido === "DOMICILIO" || tipoPedido === "PARA LLEVAR") && !item.precioEditado) {
-             precioAAplicar += 2000;
-        }
-
         if (item.categoria === "SALSA" && !item.precioEditado) {
             for(let i = 0; i < item.cant; i++) {
                 if (contadorSalsas < 2) {
-                    totalFila += (item.requiereEmpaque && (tipoPedido === "DOMICILIO" || tipoPedido === "PARA LLEVAR") ? 2000 : 0);
+                    totalFila += 0;
                 } else {
                     totalFila += precioAAplicar;
                 }
@@ -754,14 +743,10 @@
           let precioFinalUnidad = item.precio;
           let totalItem = 0;
 
-          if (item.requiereEmpaque && (tipo === "DOMICILIO" || tipo === "PARA LLEVAR") && !item.precioEditado) {
-               precioFinalUnidad += 2000;
-          }
-
           if (item.categoria === "SALSA" && !item.precioEditado) {
               for(let i=0; i<item.cant; i++) {
                   if (contadorSalsasEnvio < 2) {
-                      totalItem += (item.requiereEmpaque && (tipo === "DOMICILIO" || tipo === "PARA LLEVAR") ? 2000 : 0);
+                      totalItem += 0;
                   } else {
                       totalItem += precioFinalUnidad;
                   }
@@ -1106,7 +1091,6 @@
         if (p.est === "POR PAGAR 💰") ticketClass += ' por-pagar';
         if (p.est === "EN COCINA 👨‍🍳") ticketClass += ' en-cocina';
 
-        // CORRECCIÓN TURNOS NUEVOS EN TARJETA
         let displayTurno = p.id.split('-').length > 2 ? p.id.split('-')[p.id.split('-').length - 2] : p.id.split('-').pop();
 
         let htmlInner = `
