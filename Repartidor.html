@@ -77,12 +77,12 @@
           botonHTML = `<button class="btn-ticket btn-green" onclick="entregar('${p.id}')">✅ Confirmar Entrega</button>`;
         }
 
-        let urlMapa = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(p.direccion);
+        let urlMapa = "https://maps.google.com/?q=" + encodeURIComponent(p.direccion);
 
         return `
         <div class="ticket ${claseBorde}">
           <div class="t-header">
-            <span class="t-id">#${p.id.split('-').pop()}</span>
+            <span class="t-id">#${String(p.id).split('-').slice(-2)[0]}</span>
             <span class="t-badge">${badge}</span>
           </div>
           
@@ -124,7 +124,7 @@
   
   function confirmarPago(id) {
     lockUI(true);
-    google.script.run.withSuccessHandler(() => { lockUI(false); cargarRepartos(); }).ejecutarConfirmacionPagoRemoto(id.split('-').pop());
+    google.script.run.withSuccessHandler(() => { lockUI(false); cargarRepartos(); }).ejecutarConfirmacionPagoRemoto(String(id).split('-').slice(-2)[0]);
   }
 
   cargarRepartos();
