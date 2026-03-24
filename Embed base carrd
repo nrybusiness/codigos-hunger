@@ -40,8 +40,15 @@ promoInput.value = 'on';
 form.appendChild(promoInput);
 }
 
+// SOLUCIÓN RASTREO: Crear el campo turno_temp dinámicamente si no existe
 var campoTurno = document.querySelector('input[name="turno_temp"], input[id^="turno_temp"]');
-if (campoTurno && campoTurno.value === "") {
+if (!campoTurno && form) {
+campoTurno = document.createElement('input');
+campoTurno.type = 'hidden';
+campoTurno.name = 'turno_temp';
+form.appendChild(campoTurno);
+}
+if (campoTurno) {
 campoTurno.value = numTurno;
 }
 
@@ -54,7 +61,6 @@ function actualizarBloques() {
 var val = selectorPersonas.value;
 var esBatallon = (val === "+");
 var n = esBatallon ? 0 : (parseInt(val) || 0);
-
 var mostrarExtras = (n >= 1 && n <= 5 && !esBatallon);
 
 function alternarVisibilidad(el, mostrar) {
