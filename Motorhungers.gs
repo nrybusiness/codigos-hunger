@@ -67,18 +67,45 @@ function buscarEstadoPedido(turnoBuscado) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shP = ss.getSheetByName("PEDIDOS_ACTIVOS");
   const d = shP.getDataRange().getValues();
+  
+  let idOficial = "";
+  let cliente = "Cliente";
+  let estado = "PENDIENTE";
+  let tipo = "LOCAL";
+  let metodo = "EFECTIVO";
+  let totalCalculado = 0;
+  let encontrado = false;
+
   for (let i = d.length - 1; i >= 1; i--) { 
     let idCompleto = d[i][0] ? String(d[i][0]).trim() : "";
     if (idCompleto && (idCompleto.includes("-" + turnoBuscado + "-") || idCompleto.endsWith("-" + turnoBuscado) || idCompleto === turnoBuscado)) {
-      return {
-        encontrado: true,
-        cliente: d[i][5] || "Cliente",
-        estado: d[i][3] || "PENDIENTE", 
-        tipo: d[i][9] || "LOCAL" 
-      };
+      idOficial = idCompleto;
+      cliente = d[i][5] || "Cliente";
+      estado = d[i][3] || "PENDIENTE"; 
+      tipo = d[i][9] || "LOCAL";
+      metodo = d[i][10] || "Efectivo";
+      encontrado = true;
+      break;
     }
   }
-  return { encontrado: false };
+
+  if (!encontrado) return { encontrado: false };
+
+  for (let i = 1; i < d.length; i++) {
+    let idCompleto = d[i][0] ? String(d[i][0]).trim() : "";
+    if (idCompleto === idOficial) {
+      totalCalculado += (Number(d[i][8]) || 0);
+    }
+  }
+
+  return {
+    encontrado: true,
+    cliente: cliente,
+    estado: estado,
+    tipo: tipo,
+    total: totalCalculado,
+    metodo: metodo
+  };
 }
 
 function doPost(e) {
