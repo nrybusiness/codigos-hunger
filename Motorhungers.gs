@@ -1,5 +1,5 @@
 /**
- * 🍔 SISTEMA INTEGRAL HUNGER BURGERS - BACKEND FINAL
+ * 🍔 SISTEMA INTEGRAL HUNGER BURGERS - BACKEND FINAL (CONSOLIDADO)
  */
 
 const COSTO_EMPAQUE_FIJO = 2000;
@@ -38,11 +38,33 @@ function onEdit(e) {
   }
 }
 
+function sanitizarTexto(texto) {
+  if (!texto) return "";
+  let limpio = String(texto).trim();
+  if (/^[=+\-@]/.test(limpio)) limpio = "'" + limpio;
+  return limpio.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function doGet(e) {
   const modo = e?.parameter?.mode || 'kds';
+  
   if (modo === 'api_rastreo') {
     const turno = e?.parameter?.turno || "";
     const callback = e?.parameter?.callback;
+    
+    if (turno) {
+      const cache = CacheService.getScriptCache();
+      const limitKey = "RASTREO_LIMIT_" + turno;
+      let intentos = Number(cache.get(limitKey)) || 0;
+      
+      if (intentos > 10) {
+         const errRes = { encontrado: false, estado: "BLOQUEADO TEMPORALMENTE", error: "Demasiadas consultas" };
+         if (callback) return ContentService.createTextOutput(callback + '(' + JSON.stringify(errRes) + ');').setMimeType(ContentService.MimeType.JAVASCRIPT);
+         return ContentService.createTextOutput(JSON.stringify(errRes)).setMimeType(ContentService.MimeType.JSON);
+      }
+      cache.put(limitKey, intentos + 1, 60); 
+    }
+
     const resultado = buscarEstadoPedido(turno);
     
     if (callback) {
@@ -141,17 +163,26 @@ function doPost(e) {
          registrarMermaOConsumo(); 
          return responderJSON("success", "Mermas registradas y descontadas");
       }
-
       return responderJSON("success", "Comando ejecutado");
     }
 
-    const nombre = String(p.nombre || "Invitado").trim().toUpperCase();
-    const celular = String(p.celular || "").trim();
-    const notas = String(p.notas || "").trim();
-    const direccion = String(p.direccion || "Recoge en Local").trim();
-    const tipo_pedido = String(p.tipo_pedido || "Local").trim().toUpperCase();
-    const metodo_pago = String(p.metodo_pago || "Efectivo").trim().toUpperCase();
-    const numPersonas = parseInt(p.personas) || 1;
+    const nombre = sanitizarTexto(p.nombre || "Invitado").toUpperCase();
+    const celular = sanitizarTexto(p.celular || "");
+    const notas = sanitizarTexto(p.notas || "");
+    const direccion = sanitizarTexto(p.direccion || "Recoge en Local");
+    const tipo_pedido = sanitizarTexto(p.tipo_pedido || "Local").toUpperCase();
+    const metodo_pago = sanitizarTexto(p.metodo_pago || "Efectivo").toUpperCase();
+    const numPersonas = parseInt(sanitizarTexto(p.personas)) || 1;
+
+    if (celular) {
+      const cache = CacheService.getScriptCache();
+      const lockKey = "PEDIDO_LOCK_" + celular;
+      if (cache.get(lockKey)) {
+        return responderJSON("error", "Demasiados pedidos en poco tiempo. Por favor espera 1 minuto.");
+      }
+      cache.put(lockKey, "locked", 60); 
+    }
+
     let itemsParaInsertar = [];
     
     for (let persona = 1; persona <= numPersonas; persona++) {
@@ -178,7 +209,6 @@ function doPost(e) {
       "add_s_pina": "SALSA PIÑA", "add_s_tomate": "SALSA TOMATE", 
       "add_guacamole": "GUACAMOLE ESPECIAL"
     };
-
     for (let clave in mapaAdiciones) {
       if (p[clave] === "on" || p[clave] === "true") {
         itemsParaInsertar.push({ nombre: mapaAdiciones[clave], cant: 1 });
@@ -213,16 +243,14 @@ function doPost(e) {
     let rec = shR ? shR.getDataRange().getValues() : [];
     let preciosDB = {};
     let reqEmpaque = {};
-    let catMap = {}; 
-    
+    let catMap = {};
     for (let r = 1; r < rec.length; r++) {
       let n = String(rec[r][0]).trim().toUpperCase();
       let ing = String(rec[r][1]).trim().toUpperCase();
       let pr = Number(rec[r][4]) || 0;
       let categoriaRaw = String(rec[r][5] || "").trim().toUpperCase();
-
       if (n) {
-        if (preciosDB[n] === undefined || pr > preciosDB[n]) preciosDB[n] = pr;
+        if (preciosDB[n] === undefined || (preciosDB[n] === 0 && pr > 0)) preciosDB[n] = pr;
         if (/\[LLEVAR\]/i.test(ing)) reqEmpaque[n] = true;
         if (categoriaRaw !== "" && !catMap[n]) catMap[n] = categoriaRaw;
       }
@@ -235,14 +263,20 @@ function doPost(e) {
          if (item.nombre === "COSTO EMPAQUE") precioBase = COSTO_EMPAQUE_FIJO;
          let catOficial = catMap[item.nombre] || "";
 
+         // LÓGICA ESTRICTA DE SALSAS
+         let esSalsa = catOficial.includes("SALSA") || 
+                       item.nombre.includes("SALSA") || 
+                       item.nombre.includes("GUACAMOLE") || 
+                       item.nombre.includes("CHIMICHURRI");
+
          let totalCalculado = 0;
 
-         if (catOficial === "SALSA") {
+         if (esSalsa) {
              for (let i = 0; i < item.cant; i++) {
                  if (contadorSalsas < 2) {
                      totalCalculado += 0; 
                  } else {
-                     totalCalculado += precioBase; 
+                     totalCalculado += 500; // Cobro forzoso de 500
                  }
                  contadorSalsas++;
              }
@@ -284,13 +318,12 @@ function obtenerMenuPOS() {
     let categoriaRaw = String(data[i][5] || "").trim().toUpperCase();
 
     if (!prod) continue;
-
     if (categoriaRaw !== "" && !catMap[prod]) {
         catMap[prod] = categoriaRaw;
     }
 
     if (precio > 0) {
-        if (mapPOS[prod] === undefined || precio > mapPOS[prod]) {
+        if (mapPOS[prod] === undefined || (mapPOS[prod] === 0 && precio > 0)) {
             mapPOS[prod] = precio;
         }
     }
@@ -302,7 +335,6 @@ function obtenerMenuPOS() {
     let catOficial = catMap[prod] || "PRINCIPAL"; 
     
     if (catOficial.includes("INGREDIENTE") || prod === "EMPAQUE LLEVAR" || prod === "COSTO EMPAQUE") continue;
-
     catalogo.push({ 
         nombre: prod, 
         precio: mapPOS[prod], 
@@ -327,11 +359,10 @@ function guardarPedidoPOS(clienteObj, carritoJSON) {
   let tipo_pedido = String(clienteObj.tipo_pedido || "LOCAL").trim().toUpperCase();
   let metodo_pago = String(clienteObj.metodo_pago || "EFECTIVO").trim().toUpperCase();
   
-  let turnoTemp = Math.floor(1000 + Math.random() * 9000).toString(); 
+  let turnoTemp = Math.floor(1000 + Math.random() * 9000).toString();
   const timestampID = Date.now().toString(36).toUpperCase().slice(-6); 
   let idOficial = celular ? `${celular}-${turnoTemp}-${timestampID}` : `POS-${turnoTemp}-${timestampID}`;
   let fechaActual = new Date();
-  
   let estadoInicial = (metodo_pago === "NEQUI" || (["LOCAL", "PARA LLEVAR"].includes(tipo_pedido) && metodo_pago === "EFECTIVO")) 
                       ? "POR PAGAR 💰" : "PENDIENTE";
   
@@ -375,7 +406,6 @@ function modificarPedidoPOS(idAEditar, clienteObj, carritoJSON) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shP = ss.getSheetByName("PEDIDOS_ACTIVOS");
   const d = shP.getDataRange().getValues();
-  
   let filasBorradas = false;
   let fechaOriginal = new Date();
   
@@ -393,7 +423,6 @@ function modificarPedidoPOS(idAEditar, clienteObj, carritoJSON) {
   }
   
   if (!filasBorradas) throw new Error("No se encontró el pedido a modificar.");
-
   let carrito = JSON.parse(carritoJSON);
   let nombre = String(clienteObj.nombre || "Cliente POS").trim().toUpperCase();
   let celular = String(clienteObj.celular || "").trim();
@@ -445,7 +474,6 @@ function guardarExtraTicketRemoto(idPedido, extraName, cobroExtra) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shP = ss.getSheetByName("PEDIDOS_ACTIVOS");
   const d = shP.getDataRange().getValues();
-  
   let idBuscado = String(idPedido).trim();
   let datosPedido = null;
   for (let i = 1; i < d.length; i++) {
@@ -473,17 +501,13 @@ function migrarDomiciliosAntiguos() {
   }
 
   let pedidosMap = {};
-
   for (let i = 1; i < d.length; i++) {
     let id = String(d[i][0]).trim();
     if (!id) continue;
-
     let nombreProd = String(d[i][1]).trim().toUpperCase();
     let estado = String(d[i][3]).trim();
     let tipo = String(d[i][9]).trim().toUpperCase();
-
     if (estado === "ENTREGADO ✅" || estado === "❌ ANULADO") continue;
-
     if (!pedidosMap[id]) {
       pedidosMap[id] = {
         esDomicilio: (tipo === "DOMICILIO"),
@@ -545,12 +569,10 @@ function acumularRequerimientos(nombreProd, cant, cacheHojas, reqMap, tipoPedido
       let cantIngrediente = Number(rec[i][2]) || 0;
 
       if (hojaDestino === "N/A" || hojaDestino === "undefined" || !hojaDestino) continue;
-
       let esParaLlevar = /\[LLEVAR\]/i.test(ingredienteOriginal);
       if (esParaLlevar && tipoPedido === "LOCAL") continue;
       
       let ingredienteLimpio = ingredienteOriginal.replace(/\[LLEVAR\]/ig, "").trim().toUpperCase();
-
       if (hojaDestino.toUpperCase() === "RECETAS") {
         acumularRequerimientos(ingredienteOriginal, cantIngrediente * cant, cacheHojas, reqMap, tipoPedido);
       } else {
@@ -619,7 +641,7 @@ function obtenerPedidosKDS() {
     let ing = String(rec[r][1]).trim().toUpperCase();
     let precio = Number(rec[r][4]) || 0;
     if (nombre) {
-      if (precios[nombre] === undefined || precio > precios[nombre]) precios[nombre] = precio;
+      if (precios[nombre] === undefined || (precios[nombre] === 0 && precio > 0)) precios[nombre] = precio;
       if (/\[LLEVAR\]/i.test(ing)) reqEmpaque[nombre] = true;
     }
   }
@@ -629,7 +651,6 @@ function obtenerPedidosKDS() {
     let id = d[i][0] ? String(d[i][0]).trim() : "";
     if (!id) continue;
     let est = d[i][3] ? String(d[i][3]).trim() : "";
-    
     if (est === "PENDIENTE" || est === "EN COCINA 👨‍🍳" || est === "POR PAGAR 💰") {
       if (!ticketsMap[id]) {
         ticketsMap[id] = { id: id, cliente: d[i][5], celular: d[i][6], direccion: d[i][12], tipo: d[i][9], notas: d[i][7], est: est, items: [], itemsObj: [], total: 0, metodo_pago: d[i][10] || "Efectivo", bloqueado: false, motivosBloqueo: [] };
@@ -637,11 +658,14 @@ function obtenerPedidosKDS() {
       
       let nombreProd = d[i][1] ? String(d[i][1]).trim().toUpperCase() : "";
       let cantItem = Number(d[i][2]) || 1;
-      let precioGuardadoTotal = Number(d[i][8]) || 0;
+      
+      let celdaPrecio = d[i][8];
+      let precioGuardadoTotal = 0;
       let precioUnitario = 0;
       
-      if (precioGuardadoTotal !== 0) {
-          precioUnitario = precioGuardadoTotal / cantItem;
+      if (celdaPrecio !== "" && celdaPrecio !== null) {
+          precioGuardadoTotal = Number(celdaPrecio) || 0;
+          precioUnitario = cantItem > 0 ? precioGuardadoTotal / cantItem : 0;
       } else {
           precioUnitario = precios[nombreProd] !== undefined ? precios[nombreProd] : 0;
           if (nombreProd === "COSTO EMPAQUE") precioUnitario = COSTO_EMPAQUE_FIJO;
@@ -651,7 +675,6 @@ function obtenerPedidosKDS() {
       ticketsMap[id].items.push(nombreProd + " (x" + cantItem + ")");
       ticketsMap[id].itemsObj.push({ nombre: nombreProd, cant: cantItem, precio: precioUnitario });
       ticketsMap[id].total += precioGuardadoTotal;
-
       if (est === "POR PAGAR 💰") ticketsMap[id].est = "POR PAGAR 💰";
       else if (est === "EN COCINA 👨‍🍳" && ticketsMap[id].est !== "POR PAGAR 💰") ticketsMap[id].est = "EN COCINA 👨‍🍳";
     }
@@ -662,7 +685,6 @@ function obtenerPedidosKDS() {
     if (t.est === "PENDIENTE") {
       let reqMap = {};
       let tipoPedidoParaReq = (t.tipo.toUpperCase() === "DOMICILIO" || t.tipo.toUpperCase() === "PARA LLEVAR") ? "DOMICILIO" : "LOCAL";
-      
       for (let item of t.itemsObj) {
          acumularRequerimientos(item.nombre, item.cant, cacheHojas, reqMap, tipoPedidoParaReq);
       }
@@ -688,7 +710,6 @@ function avanzarTicketCompleto(idPedido, omitirStr = "") {
       if (!idPedido) return;
       const idBuscado = String(idPedido).trim();
       let omitir = (typeof omitirStr === "string" && omitirStr) ? omitirStr.split(",") : [];
-      
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const shP = ss.getSheetByName("PEDIDOS_ACTIVOS");
       const shR = ss.getSheetByName("RECETAS");
@@ -717,26 +738,29 @@ function avanzarTicketCompleto(idPedido, omitirStr = "") {
         if (idActual === idBuscado) {
           let est = d[i][3] ? String(d[i][3]).trim() : "";
           let prodActual = d[i][1] ? String(d[i][1]).trim().toUpperCase() : "";
-
           if (est === "PENDIENTE") {
             let pVenta = 0, cTotal = 0;
             for (let r = 1; r < rec.length; r++) {
               let prodReceta = rec[r][0] ? String(rec[r][0]).trim().toUpperCase() : "";
               if (prodReceta === prodActual) {
                 let precioFila = Number(rec[r][4]) || 0;
-                if (precioFila > pVenta) pVenta = precioFila;
+                if (pVenta === 0 && precioFila > 0) pVenta = precioFila;
                 cTotal += obtenerCostoIngrediente(ss, rec[r][3], rec[r][1], rec[r][2], cacheData, tipoPedidoLogico);
               }
             }
             
-            let precioRegistrado = Number(d[i][8]) || 0;
-            let pVentaFinal = (precioRegistrado !== 0) ? (precioRegistrado / Number(d[i][2])) : pVenta;
+            let celdaPrecio = d[i][8];
+            let pVentaFinal = 0;
+            if (celdaPrecio !== "" && celdaPrecio !== null) {
+                pVentaFinal = (Number(celdaPrecio) || 0) / Number(d[i][2]);
+            } else {
+                pVentaFinal = pVenta;
+            }
             
             shP.getRange(i + 1, 9).setValue(pVentaFinal * d[i][2]);
             shP.getRange(i + 1, 12).setValue((pVentaFinal * d[i][2]) - (cTotal * d[i][2]));
             
-            motorInventario(ss, d[i][1], d[i][2], false, omitir, cacheHojas, cacheData, tipoPedidoLogico); 
-            
+            motorInventario(ss, d[i][1], d[i][2], false, omitir, cacheHojas, cacheData, tipoPedidoLogico);
             shP.getRange(i + 1, 4).setValue("EN COCINA 👨‍🍳");
             shP.getRange(i + 1, 1, 1, 13).setBackground("#ffe599");
           } 
@@ -765,7 +789,6 @@ function ajustarTotalPedidoRemoto(idPedido, diferencia) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shP = ss.getSheetByName("PEDIDOS_ACTIVOS");
   const d = shP.getDataRange().getValues();
-  
   let idBuscado = String(idPedido).trim();
   let datosPedido = null;
   for (let i = 1; i < d.length; i++) {
@@ -775,7 +798,6 @@ function ajustarTotalPedidoRemoto(idPedido, diferencia) {
     }
   }
   if (!datosPedido) throw new Error("Pedido no encontrado.");
-  
   shP.appendRow([
     idBuscado, 
     "AJUSTE DE PRECIO ADMIN", 
@@ -850,7 +872,6 @@ function motorInventario(ss, prod, cant, modoA, omitir = [], cacheHojasObj = {},
   }
   const recetas = cacheDataObj["RECETAS"];
   let encontradoEnRecetas = false;
-
   for (let i = 1; i < recetas.length; i++) {
     let itemRec = recetas[i][0] ? String(recetas[i][0]).trim().toUpperCase() : "";
     if (itemRec === nombreProdLimpio) {
@@ -860,13 +881,11 @@ function motorInventario(ss, prod, cant, modoA, omitir = [], cacheHojasObj = {},
       let cantIngrediente = Number(recetas[i][2]) || 0;
       
       if (hojaDestino === "N/A" || hojaDestino === "undefined" || !hojaDestino) continue;
-      
       let esParaLlevar = /\[LLEVAR\]/i.test(ingredienteOriginal);
       if (esParaLlevar && tipoPedido === "LOCAL") continue;
       
       let ingredienteLimpio = ingredienteOriginal.replace(/\[LLEVAR\]/ig, "").trim().toUpperCase();
       if (omitir.includes(ingredienteLimpio)) continue;
-      
       if (hojaDestino.toUpperCase() === "RECETAS") {
         motorInventario(ss, ingredienteOriginal, cantIngrediente * Number(cant), modoA, omitir, cacheHojasObj, cacheDataObj, tipoPedido);
         continue;
@@ -878,7 +897,6 @@ function motorInventario(ss, prod, cant, modoA, omitir = [], cacheHojasObj = {},
       }
       const shI = cacheHojasObj[hojaDestino];
       const dI = cacheDataObj[hojaDestino];
-      
       if (shI && dI) {
         for (let j = 1; j < dI.length; j++) {
           let targetIng = dI[j][0] ? String(dI[j][0]).trim().toUpperCase() : "";
@@ -888,7 +906,6 @@ function motorInventario(ss, prod, cant, modoA, omitir = [], cacheHojasObj = {},
             let salidasActuales = Number(dI[j][3]) || 0;
             let nuevasSalidas = modoA ? salidasActuales - gastoPorcion : salidasActuales + gastoPorcion;
             if (nuevasSalidas < 0) nuevasSalidas = 0;
-            
             shI.getRange(j + 1, 4).setValue(nuevasSalidas); 
             let stockInicial = Number(dI[j][1]) || 0;
             let entradas = Number(dI[j][2]) || 0;
@@ -915,7 +932,6 @@ function motorInventario(ss, prod, cant, modoA, omitir = [], cacheHojasObj = {},
       }
       const shI = cacheHojasObj[h];
       const dI = cacheDataObj[h];
-      
       if (!shI || !dI) continue;
       for (let j = 1; j < dI.length; j++) {
         let itemD = dI[j][0] ? String(dI[j][0]).trim().toUpperCase() : "";
@@ -923,7 +939,6 @@ function motorInventario(ss, prod, cant, modoA, omitir = [], cacheHojasObj = {},
           let salidasActuales = Number(dI[j][3]) || 0;
           let nuevasSalidas = modoA ? salidasActuales - cant : salidasActuales + cant;
           if (nuevasSalidas < 0) nuevasSalidas = 0;
-          
           shI.getRange(j + 1, 4).setValue(nuevasSalidas);
           let stockInicial = Number(dI[j][1]) || 0;
           let entradas = Number(dI[j][2]) || 0;
@@ -965,7 +980,6 @@ function obtenerCostoIngrediente(ss, hoja, ing, cantR, cacheData = null, tipoPed
   
   let esParaLlevar = /\[LLEVAR\]/i.test(nombreIngRaw);
   if (esParaLlevar && tipoPedido === "LOCAL") return 0;
-  
   let nombreIng = nombreIngRaw.replace(/\[LLEVAR\]/ig, "").trim().toUpperCase();
 
   if (!cacheData) cacheData = {};
@@ -994,7 +1008,7 @@ function obtenerCostoIngrediente(ss, hoja, ing, cantR, cacheData = null, tipoPed
   for (let i = 1; i < shData.length; i++) {
     let itemInv = shData[i][0] ? String(shData[i][0]).trim().toUpperCase() : "";
     if (itemInv === nombreIng) {
-      let rendimiento = Number(shData[i][8]) || 1; 
+      let rendimiento = Number(shData[i][8]) || 1;
       return (Number(shData[i][6]) / rendimiento) * Number(cantR); 
     }
   }
@@ -1012,7 +1026,6 @@ function generarReporteCostos() {
   
   shC.appendRow(["Producto Final", "Costo Real", "Precio Sugerido (66% Margen)", "Precio Redondeado", "Precio Actual (RECETAS)", "Ajuste Necesario"]);
   shC.getRange("A1:F1").setFontWeight("bold").setBackground("#343a40").setFontColor("white");
-  
   const shR = ss.getSheetByName("RECETAS");
   if(!shR) return SpreadsheetApp.getUi().alert("❌ No se encontró la hoja RECETAS");
   
@@ -1024,11 +1037,12 @@ function generarReporteCostos() {
     let nombre = String(rec[i][0]).trim().toUpperCase();
     if (!nombre) continue;
     
+    let pr = Number(rec[i][4]) || 0;
+
     if (!productos[nombre]) {
-      productos[nombre] = { costo: 0, precioActual: Number(rec[i][4]) || 0 };
+      productos[nombre] = { costo: 0, precioActual: pr };
     } else {
-       let pr = Number(rec[i][4]) || 0;
-       if (pr > productos[nombre].precioActual) {
+       if (productos[nombre].precioActual === 0 && pr > 0) {
            productos[nombre].precioActual = pr;
        }
     }
@@ -1044,7 +1058,6 @@ function generarReporteCostos() {
   for (let prod in productos) {
     let costoReal = productos[prod].costo;
     let precioActual = productos[prod].precioActual;
-    
     if (precioActual > 0 || costoReal > 0) {
       let precioSugerido = costoReal * 3;
       let precioRedondeado = Math.round(precioSugerido / 500) * 500;
@@ -1062,11 +1075,11 @@ function generarReporteCostos() {
        let ajuste = datosReporte[i][5];
        let cell = shC.getRange(i + 2, 6);
        if (ajuste > 0) {
-         cell.setBackground("#f8d7da").setFontColor("#721c24"); 
+         cell.setBackground("#f8d7da").setFontColor("#721c24");
        } else if (ajuste < 0) {
-         cell.setBackground("#d4edda").setFontColor("#155724"); 
+         cell.setBackground("#d4edda").setFontColor("#155724");
        } else {
-         cell.setBackground("#d1ecf1").setFontColor("#856404"); 
+         cell.setBackground("#d1ecf1").setFontColor("#856404");
        }
     }
   }
@@ -1081,13 +1094,11 @@ function aplicarPreciosSugeridos() {
     "¿Estás seguro de que deseas sobreescribir los precios en tu hoja de RECETAS con los 'Precios Redondeados' del último Análisis de Costos?\n\nEsta acción modificará tu menú automáticamente.",
     ui.ButtonSet.YES_NO
   );
-
   if (respuesta !== ui.Button.YES) return;
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shC = ss.getSheetByName("ANALISIS_COSTOS");
   const shR = ss.getSheetByName("RECETAS");
-
   if (!shC || !shR) {
     ui.alert("❌ Faltan hojas. Asegúrate de generar el Análisis de Costos primero.");
     return;
@@ -1097,7 +1108,6 @@ function aplicarPreciosSugeridos() {
   const dataR = shR.getDataRange().getValues();
 
   let filasConPrecio = {};
-
   for (let i = 1; i < dataR.length; i++) {
      let p = String(dataR[i][0]).trim().toUpperCase();
      let precio = Number(dataR[i][4]) || 0;
@@ -1110,7 +1120,6 @@ function aplicarPreciosSugeridos() {
   }
 
   let actualizados = 0;
-
   for (let i = 1; i < dataC.length; i++) {
     let producto = String(dataC[i][0]).trim().toUpperCase();
     let precioRedondeado = Number(dataC[i][3]);
@@ -1151,14 +1160,12 @@ function formatearRecetas() {
 
   for (let i = 1; i < valores.length; i++) {
     let recetaFila = String(valores[i][0]).trim();
-
     if (recetaFila !== "" && recetaFila !== recetaActual) {
       let numFilas = (i + 2) - inicioBloque;
       let bloqueRango = sh.getRange(inicioBloque, 1, numFilas, sh.getLastColumn());
 
       bloqueRango.setBorder(true, true, true, true, false, false, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
       bloqueRango.setBackground(colorAlterno ? "#f8f9fa" : "#ffffff");
-
       colorAlterno = !colorAlterno;
       inicioBloque = i + 2;
       recetaActual = recetaFila;
@@ -1169,13 +1176,11 @@ function formatearRecetas() {
   let ultimoBloqueRango = sh.getRange(inicioBloque, 1, numFilasUltimo, sh.getLastColumn());
   ultimoBloqueRango.setBorder(true, true, true, true, false, false, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
   ultimoBloqueRango.setBackground(colorAlterno ? "#f8f9fa" : "#ffffff");
-
   sh.getRange(1, 1, 1, sh.getLastColumn())
     .setBackground("#343a40")
     .setFontColor("white")
     .setFontWeight("bold")
     .setBorder(true, true, true, true, null, null, "black", SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
-
   SpreadsheetApp.getUi().alert("✅ ¡Hoja de RECETAS formateada con éxito!");
 }
 
@@ -1186,13 +1191,11 @@ function registrarCompra() {
   
   let sheetsCache = {};
   let dataCache = {};
-  
   for (let i = 1; i < dC.length; i++) {
     if (hC.getRange(i + 1, 1).getBackground() !== "#d9ead3" && dC[i][2] !== "") {
       let cant = Number(dC[i][3]);
       let costo = Number(dC[i][4]);
-      if (isNaN(cant) || cant <= 0 || isNaN(costo) || costo < 0) continue; 
-
+      if (isNaN(cant) || cant <= 0 || isNaN(costo) || costo < 0) continue;
       let nombreHoja = dC[i][5];
       if (!sheetsCache[nombreHoja]) {
           sheetsCache[nombreHoja] = ss.getSheetByName(nombreHoja);
@@ -1211,7 +1214,6 @@ function registrarCompra() {
             let nuevasEntradas = entradasActuales + cant;
             hI.getRange(j + 1, 3).setValue(nuevasEntradas);
             hI.getRange(j + 1, 7).setValue(costo / cant);
-            
             let stockInicial = Number(dI[j][1]) || 0;
             let salidas = Number(dI[j][3]) || 0; 
             let stockActualCalculado = stockInicial + nuevasEntradas - salidas;
@@ -1234,15 +1236,13 @@ function registrarMermaOConsumo() {
   
   let sheetsCache = {};
   let dataCache = {};
-  
   for (let i = 1; i < mermas.length; i++) {
     if (mermas[i][5] !== "PROCESADO") { 
-      let cant = Number(mermas[i][2]); 
+      let cant = Number(mermas[i][2]);
       if (isNaN(cant) || cant <= 0) continue; 
       
       const insumo = mermas[i][1] ? String(mermas[i][1]).trim().toUpperCase() : "";
       const hoja = mermas[i][4];
-      
       if (!sheetsCache[hoja]) {
           sheetsCache[hoja] = ss.getSheetByName(hoja);
           if (sheetsCache[hoja]) dataCache[hoja] = sheetsCache[hoja].getDataRange().getValues();
@@ -1264,7 +1264,6 @@ function registrarMermaOConsumo() {
             let entradas = Number(dI[j][2]) || 0;
             let stockActualCalculado = stockInicial + entradas - nuevasSalidas;
             shI.getRange(j + 1, 5).setValue(stockActualCalculado);
-            
             dI[j][3] = nuevasSalidas; 
             mermaProcesada = true;
             break;
@@ -1289,8 +1288,7 @@ function cierreDeTurno() {
   let v = 0, tD = 0, uT = 0;
   let anuladosCount = 0;
   let desglosePagos = {};
-  let newData = [d[0]]; 
-  
+  let newData = [d[0]];
   for (let i = 1; i < d.length; i++) {
     if (d[i][3] === "ENTREGADO ✅") { 
       v++;
@@ -1306,7 +1304,6 @@ function cierreDeTurno() {
   }
   
   if (v > 0) shB.appendRow([new Date(), tD, v, v, 0, "Cierre Exitoso", uT]);
-  
   shP.getDataRange().clearContent();
   if (newData.length > 0) {
       shP.getRange(1, 1, newData.length, newData[0].length).setValues(newData);
@@ -1323,19 +1320,20 @@ function actualizarOcrearCliente(cel, nom, fecha) {
   const dC = shC.getDataRange().getValues();
   let fE = -1;
   for (let i = 1; i < dC.length; i++) { 
-    if (dC[i][0] && String(dC[i][0]).trim() === celBuscado) { fE = i + 1; break; } 
+    if (dC[i][0] && String(dC[i][0]).trim() === celBuscado) { fE = i + 1;
+      break; } 
   }
   if (fE !== -1) {
     shC.getRange(fE, 3).setValue(fecha);
     shC.getRange(fE, 4).setValue((Number(dC[fE - 1][3]) || 0) + 1);
-  } else { shC.appendRow([cel, nom, fecha, 1, "Cliente Nuevo"]); }
+  } else { shC.appendRow([cel, nom, fecha, 1, "Cliente Nuevo"]);
+  }
 }
 
 function obtenerAlertasInventario() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const hojasAvisar = ["INV_COMIDA"]; 
   let alertas = [];
-
   hojasAvisar.forEach(nombreHoja => {
     const hoja = ss.getSheetByName(nombreHoja);
     if (hoja) {
@@ -1378,7 +1376,6 @@ function obtenerPedidosReparto() {
   const ultimaFila = shP.getLastRow();
   if (ultimaFila < 2) return [];
   const d = shP.getRange(2, 1, ultimaFila - 1, 13).getValues();
-  
   const shR = ss.getSheetByName("RECETAS");
   let precios = {};
   if (shR) {
@@ -1387,7 +1384,7 @@ function obtenerPedidosReparto() {
       let nombre = rec[r][0] ? String(rec[r][0]).trim().toUpperCase() : "";
       let precio = Number(rec[r][4]) || 0;
       if (nombre) {
-        if (precios[nombre] === undefined || precio > precios[nombre]) {
+        if (precios[nombre] === undefined || (precios[nombre] === 0 && precio > 0)) {
           precios[nombre] = precio;
         }
       }
@@ -1418,10 +1415,14 @@ function obtenerPedidosReparto() {
       }
       ticketsMap[id].items.push(d[i][1] + " (x" + (Number(d[i][2]) || 1) + ")");
       
-      let precioGuardado = Number(d[i][8]) || 0;
-      if (precioGuardado === 0) {
-        let nombreProd = d[i][1] ? String(d[i][1]).trim().toUpperCase() : "";
-        precioGuardado = (precios[nombreProd] !== undefined ? precios[nombreProd] : 0) * (Number(d[i][2]) || 1);
+      let celdaPrecio = d[i][8];
+      let precioGuardado = 0;
+      
+      if (celdaPrecio !== "" && celdaPrecio !== null) {
+          precioGuardado = Number(celdaPrecio) || 0;
+      } else {
+          let nombreProd = d[i][1] ? String(d[i][1]).trim().toUpperCase() : "";
+          precioGuardado = (precios[nombreProd] !== undefined ? precios[nombreProd] : 0) * (Number(d[i][2]) || 1);
       }
       ticketsMap[id].total += precioGuardado;
     }
