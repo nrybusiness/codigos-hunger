@@ -28,8 +28,9 @@
     .ticket-id { font-size: 1.4em; font-weight: bold; color: #495057; }
     .ticket-type { font-size: 0.85em; background: #6c757d; color: white; padding: 3px 8px; border-radius: 12px; }
     .ticket-body { padding: 15px; flex-grow: 1; }
-    .client-name { font-weight: bold; font-size: 1.1em; margin-bottom: 10px; color: #212529; }
-    .items { list-style: none; padding: 0; margin: 0; }
+    .client-name { font-weight: bold; font-size: 1.1em; margin-bottom: 4px; color: #212529; }
+    .client-details { font-size: 0.9em; color: #495057; margin-bottom: 4px; }
+    .items { list-style: none; padding: 0; margin: 0; margin-top: 10px; }
     .items li { border-bottom: 1px dashed #ced4da; padding: 8px 0; font-size: 1em; font-weight: 500;}
     .items li:last-child { border-bottom: none; }
     .notes { background: #fff3cd; padding: 10px; border-radius: 5px; margin-top: 15px; font-size: 0.9em; font-style: italic; border-left: 4px solid #ffc107; font-weight: bold;}
@@ -87,15 +88,14 @@
     <div class="btn-alarma active" style="cursor: default;">🔔 Alarma ON</div>
   </div>
 
+  <? if (modo === 'admin') { ?>
   <div class="admin-bar">
     <button class="admin-btn btn-green" style="font-size: 16px;" onclick="abrirModalPOS()">📝 Tomar Pedido POS</button>
-    
-    <? if (modo === 'admin') { ?>
-      <button class="admin-btn btn-blue" onclick="abrirModalCompras()">🛒 Compras</button>
-      <button class="admin-btn btn-yellow" onclick="abrirModalMermas()">🗑️ Mermas</button>
-      <button class="admin-btn btn-red" onclick="confirmarCierre()">📅 Cierre Turno</button>
-    <? } ?>
+    <button class="admin-btn btn-blue" onclick="abrirModalCompras()">🛒 Compras</button>
+    <button class="admin-btn btn-yellow" onclick="abrirModalMermas()">🗑️ Mermas</button>
+    <button class="admin-btn btn-red" onclick="confirmarCierre()">📅 Cierre Turno</button>
   </div>
+  <? } ?>
 
   <div id="alertaInventario" class="alerta-inventario"></div>
 
@@ -106,6 +106,7 @@
 
   <div id="loadingOverlay">Procesando petición... ⏳</div>
 
+  <? if (modo === 'admin') { ?>
   <div id="modalPOS" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-header">
@@ -153,11 +154,9 @@
 
           <div id="step3" class="pos-step step-grid" style="display:none;">
             <div id="gridExtras" class="botones-productos"></div>
-            <? if (modo === 'admin') { ?>
             <div style="margin-top: 20px; text-align:center;">
                <button class="admin-btn" style="background:#6f42c1; width:100%; padding:12px;" onclick="agregarItemManualPOS()">➕ Añadir Ítem Manual (Admin)</button>
             </div>
-            <? } ?>
           </div>
 
           <div id="step4" class="pos-step step-grid" style="display:none;">
@@ -189,7 +188,6 @@
     </div>
   </div>
 
-  <? if (modo === 'admin') { ?>
   <div id="modalCierre" class="modal-overlay">
     <div class="modal-content" style="max-width: 400px; text-align: center;">
       <div class="modal-header" style="justify-content: center; position: relative;">
@@ -273,7 +271,7 @@
 
   <script>
     window.onload = () => {
-      document.getElementById('kdsTitle').innerText = esAdmin ? "🍔 Hunger KDS (MODO ADMIN)" : "🍔 Hunger KDS (Caja/Cocina)";
+      document.getElementById('kdsTitle').innerText = esAdmin ? "🍔 Hunger KDS (MODO ADMIN)" : "🍔 Hunger KDS (Solo Cocina)";
       cargarSistemaCentral();
     };
 
@@ -409,9 +407,7 @@
           renderGrid('gridBusquedaUniversal', matches);
       } else {
           document.getElementById('gridBusquedaUniversal').style.display = 'none';
-          if(pasoActualPOS === 2) document.getElementById('gridPrincipal').style.display = 'grid';
-          if(pasoActualPOS === 3) document.getElementById('gridExtras').style.display = 'grid';
-          if(pasoActualPOS === 4) document.getElementById('gridBebidas').style.display = 'grid';
+          cambiarPasoPOS(0);
       }
     }
 
@@ -536,6 +532,7 @@
     }
 
     function prepararEdicion(id) {
+      carritoPOS = []; 
       let ticket = datosKDSGlobal.find(t => t.id === id);
       if(!ticket) return;
 
@@ -1013,6 +1010,7 @@
     }
 
     function dibujarAlertaInventario(alertas) {
+      if (!esAdmin) return; 
       const divAlerta = document.getElementById('alertaInventario');
       if (alertas && alertas.length > 0) {
         divAlerta.innerHTML = "⚠️ ¡ATENCIÓN! STOCK CRÍTICO: " + alertas.join(" | ");
@@ -1062,31 +1060,31 @@
         `).join('');
         
         let botonesFooter = '';
-        
-        if (p.est === "POR PAGAR 💰") {
-          botonesFooter += `<button class="btn-action btn-green" onclick="confirmarPagoTicket('${p.id}')">✅ Confirmar Pago</button>`;
-        } else {
-          if (p.est === "PENDIENTE" && p.bloqueado) {
-             let omitirStr = p.motivosBloqueo.join(',');
-             botonesFooter += `<div style="background:#f8d7da; color:#721c24; padding:8px; border-radius:5px; margin-bottom:10px; font-size:0.85em; font-weight:bold; text-align:center; border: 1px solid #f5c6cb;">⚠️ INVENTARIO INSUFICIENTE:<br><span style="font-weight:normal;">${p.motivosBloqueo.join(', ')}</span></div>`;
-             botonesFooter += `<button class="btn-action btn-yellow" style="margin-bottom:8px;" onclick="forzarPedido('${p.id}', '${omitirStr}')">⚠️ Forzar Preparación</button>`;
-          } else if (p.est === "PENDIENTE") {
-             botonesFooter += `<button class="btn-action btn-blue" style="margin-bottom:8px;" onclick="avanzarPedido('${p.id}')">COMENZAR PREPARACIÓN 👨‍🍳</button>`;
-          } else if (p.est === "EN COCINA 👨‍🍳") {
-             botonesFooter += `<button class="btn-action btn-blue" style="margin-bottom:8px;" onclick="avanzarPedido('${p.id}')">¡DESPACHAR! ✅</button>`;
-          }
-        }
-        
         let adminButtons = '';
-        <? if (modo === 'admin') { ?>
-            if (p.est === "PENDIENTE" || p.est === "POR PAGAR 💰") {
+
+        if (esAdmin) {
+            if (p.est === "POR PAGAR 💰") {
+              botonesFooter += `<button class="btn-action btn-green" onclick="confirmarPagoTicket('${p.id}')">✅ Confirmar Pago</button>`;
+            } else {
+              if (p.est === "PENDIENTE" && p.bloqueado) {
+                 let omitirStr = p.motivosBloqueo.join(',');
+                 botonesFooter += `<div style="background:#f8d7da; color:#721c24; padding:8px; border-radius:5px; margin-bottom:10px; font-size:0.85em; font-weight:bold; text-align:center; border: 1px solid #f5c6cb;">⚠️ INVENTARIO INSUFICIENTE:<br><span style="font-weight:normal;">${p.motivosBloqueo.join(', ')}</span></div>`;
+                 botonesFooter += `<button class="btn-action btn-yellow" style="margin-bottom:8px;" onclick="forzarPedido('${p.id}', '${omitirStr}')">⚠️ Forzar Preparación</button>`;
+              } else if (p.est === "PENDIENTE") {
+                 botonesFooter += `<button class="btn-action btn-blue" style="margin-bottom:8px;" onclick="avanzarPedido('${p.id}')">COMENZAR PREPARACIÓN 👨‍🍳</button>`;
+              } else if (p.est === "EN COCINA 👨‍🍳") {
+                 botonesFooter += `<button class="btn-action btn-blue" style="margin-bottom:8px;" onclick="avanzarPedido('${p.id}')">¡DESPACHAR! ✅</button>`;
+              }
+            }
+
+            if (p.est === "PENDIENTE" || p.est === "POR PAGAR 💰" || p.est === "EN COCINA 👨‍🍳") {
                adminButtons += `<button class="btn-action btn-blue" style="background:#17a2b8; margin-bottom:8px;" onclick="prepararEdicion('${p.id}')">✏️ Modificar Orden</button>`;
                adminButtons += `<button class="btn-action btn-yellow" style="margin-bottom:8px;" onclick="ajustarTotalTicket('${p.id}', ${p.total})">💰 Corregir Total</button>`;
             }
             adminButtons += `<button class="btn-action" style="background: #6f42c1; margin-bottom:8px;" onclick="agregarExtraTicket('${p.id}')">🍅 Añadir Extra Manual</button>`;
             adminButtons += `<button class="btn-action btn-red" onclick="anularTicket('${p.id}')">❌ Anular Pedido</button>`;
-        <? } ?>
-        
+        }
+
         let ticketClass = 'ticket';
         if (p.est === "POR PAGAR 💰") ticketClass += ' por-pagar';
         if (p.est === "EN COCINA 👨‍🍳") ticketClass += ' en-cocina';
@@ -1099,19 +1097,38 @@
             <div class="ticket-type">${p.tipo}</div>
           </div>
           <div class="ticket-body">
-            <div class="client-name">👤 ${p.cliente}</div>
-            <ul class="items">${itemsHtml}</ul>
+            <div class="client-name" style="margin-bottom: 4px;">👤 ${p.cliente}</div>
+            ${p.celular ? `<div class="client-details">📞 ${p.celular}</div>` : ''}
+            ${p.direccion ? `<div class="client-details" style="margin-bottom: 10px;">📍 ${p.direccion}</div>` : ''}
+            <ul class="items" style="margin-top: 10px;">${itemsHtml}</ul>
             ${p.notas ? `<div class="notes">📝 "${p.notas}"</div>` : ''}
           </div>
           <div class="t-pago">
             <div>Cobrar: <span style="color:#dc3545;">$${p.total.toLocaleString()}</span></div>
             <div class="t-metodo">${p.metodo_pago}</div>
           </div>
-          <div class="ticket-footer">
-            ${botonesFooter}
-            ${adminButtons}
-          </div>
         `;
+
+        if (esAdmin) {
+            htmlInner += `
+              <div class="ticket-footer">
+                ${botonesFooter}
+                ${adminButtons}
+              </div>
+            `;
+        } else {
+            let bgEst = '#6c757d'; 
+            let txtEst = '#fff';
+            if (p.est === "EN COCINA 👨‍🍳") { bgEst = '#ffc107'; txtEst = '#000'; }
+            else if (p.est === "PENDIENTE") { bgEst = '#007bff'; txtEst = '#fff'; }
+            else if (p.est === "POR PAGAR 💰") { bgEst = '#dc3545'; txtEst = '#fff'; }
+            
+            htmlInner += `
+              <div style="background: ${bgEst}; color: ${txtEst}; text-align: center; padding: 12px; font-weight: bold; font-size: 1.2em; border-top: 1px solid #dee2e6;">
+                ESTADO: ${p.est}
+              </div>
+            `;
+        }
 
         let existing = document.getElementById('ticket-' + p.id);
         let hash = p.est + p.total + p.bloqueado + p.itemsObj.length + (p.notas || "") + JSON.stringify(p.itemsObj);
