@@ -206,7 +206,7 @@ function doPost(e) {
       "add_ensalada": "EXTRA ENSALADA ESPECIAL", "add_rosada": "SALSA ROSADA ESPECIAL", 
       "add_tartara": "SALSA TÁRTARA", "add_ajo": "SALSA AJO ESPECIAL", 
       "add_bbq": "SALSA BBQ", "add_s_maiz": "SALSA MAIZ ESPECIAL", 
-      "add_s_pina": "SALSA PIÑA", "add_s_tomate": "SALSA TOMATE", 
+      "add_s_pina": "SALSA PIÑA","add_papas": "PAPAS PARA COMBO", "add_s_tomate": "SALSA TOMATE", 
       "add_guacamole": "GUACAMOLE ESPECIAL"
     };
     for (let clave in mapaAdiciones) {
@@ -263,11 +263,10 @@ function doPost(e) {
          if (item.nombre === "COSTO EMPAQUE") precioBase = COSTO_EMPAQUE_FIJO;
          let catOficial = catMap[item.nombre] || "";
 
-         // LÓGICA ESTRICTA DE SALSAS
          let esSalsa = catOficial.includes("SALSA") || 
-                       item.nombre.includes("SALSA") || 
-                       item.nombre.includes("GUACAMOLE") || 
-                       item.nombre.includes("CHIMICHURRI");
+                        item.nombre.includes("SALSA") || 
+                        item.nombre.includes("GUACAMOLE") || 
+                        item.nombre.includes("CHIMICHURRI");
 
          let totalCalculado = 0;
 
@@ -276,7 +275,7 @@ function doPost(e) {
                  if (contadorSalsas < 2) {
                      totalCalculado += 0; 
                  } else {
-                     totalCalculado += 500; // Cobro forzoso de 500
+                     totalCalculado += 500; 
                  }
                  contadorSalsas++;
              }
@@ -408,15 +407,28 @@ function modificarPedidoPOS(idAEditar, clienteObj, carritoJSON) {
   const d = shP.getDataRange().getValues();
   let filasBorradas = false;
   let fechaOriginal = new Date();
+  let estadoOriginal = "";
+  
+  let cacheHojasObj = {};
+  let cacheDataObj = {};
   
   for (let i = d.length - 1; i >= 1; i--) {
     let idActual = d[i][0] ? String(d[i][0]).trim() : "";
     if (idActual === String(idAEditar).trim()) {
        fechaOriginal = d[i][4] || new Date();
        let estado = d[i][3] ? String(d[i][3]).trim() : "";
-       if (estado !== "PENDIENTE" && estado !== "POR PAGAR 💰") {
-          throw new Error("El pedido ya está en cocina o despachado. No se puede modificar.");
+       estadoOriginal = estado;
+       
+       if (estado !== "PENDIENTE" && estado !== "POR PAGAR 💰" && estado !== "EN COCINA 👨‍🍳") {
+          throw new Error("El pedido ya está en reparto o despachado. No se puede modificar.");
        }
+       
+       if (estado === "EN COCINA 👨‍🍳") {
+           let tipoP = d[i][9] ? String(d[i][9]).toUpperCase() : "LOCAL";
+           let tipoPedidoLogico = (tipoP === "DOMICILIO" || tipoP === "PARA LLEVAR") ? "DOMICILIO" : "LOCAL";
+           motorInventario(ss, d[i][1], d[i][2], true, [], cacheHojasObj, cacheDataObj, tipoPedidoLogico);
+       }
+       
        shP.deleteRow(i + 1);
        filasBorradas = true;
     }
@@ -433,6 +445,10 @@ function modificarPedidoPOS(idAEditar, clienteObj, carritoJSON) {
   
   let estadoInicial = (metodo_pago === "NEQUI" || (["LOCAL", "PARA LLEVAR"].includes(tipo_pedido) && metodo_pago === "EFECTIVO")) 
                       ? "POR PAGAR 💰" : "PENDIENTE";
+                      
+  if (estadoOriginal === "EN COCINA 👨‍🍳") {
+      estadoInicial = "PENDIENTE"; 
+  }
   
   if (tipo_pedido === "DOMICILIO") {
      let existeDom = carrito.find(i => String(i.nombre).toUpperCase() === "DOMICILIO");
