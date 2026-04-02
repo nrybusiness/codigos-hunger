@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hunger Burgers - Menú Express</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'hb-bg': '#F7E4B2',
+                        'hb-text': '#3D2B1F',
+                        'hb-primary': '#C78D2B',
+                        'hb-cta': '#26C6DA',
+                        'hb-track': '#FFB300',
+                        'hb-input': '#D99830'
+                    },
+                    fontFamily: {
+                        fredoka: ['"Fredoka One"', 'cursive'],
+                        quicksand: ['"Quicksand"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Quicksand:wght@400;700&display=swap');
+        
+        body {
+            background-color: #F7E4B2;
+            background-image: linear-gradient(rgba(247, 228, 178, 0.9), rgba(247, 228, 178, 0.9)), url('data:image/svg+xml;utf8,<svg width="20" height="20" xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10" fill="%23e8d29c"/><rect x="10" y="10" width="10" height="10" fill="%23e8d29c"/></svg>');
+        }
+        
+        /* Ocultar barra de scroll para modales */
+        .no-scroll { overflow: hidden; }
+        
+        /* Estilos personalizados para checkboxes */
+        input[type="checkbox"] {
+            accent-color: #3D2B1F;
+            width: 1.2rem;
+            height: 1.2rem;
+        }
+    </style>
+</head>
+<body class="font-quicksand text-hb-text antialiased pb-24">
+
+<div class="max-w-md mx-auto p-4">
+    
+    <header class="text-center mb-6">
+        <h1 class="font-fredoka text-4xl uppercase tracking-wide mt-4">Hunger Burgers</h1>
+        <p class="font-bold text-sm tracking-wider opacity-80 mb-4">¿LISTO PARA EL PRIMER MORDISCO?</p>
+    </header>
+
+    <div class="bg-white border-4 border-hb-text rounded-[30px] p-5 mb-6 shadow-[4px_4px_0px_#3D2B1F]">
+        <h2 class="font-fredoka text-xl text-center mb-2">RASTREA TU PEDIDO</h2>
+        <div class="flex gap-2">
+            <input type="number" id="tracking_id" class="w-full bg-hb-input/20 border-2 border-hb-text rounded-full px-4 py-2 font-bold placeholder-hb-text/50 focus:outline-none focus:ring-2 focus:ring-hb-primary" placeholder="EJ: 4521">
+            <button onclick="trackOrder()" class="bg-hb-track border-2 border-hb-text rounded-full px-4 font-fredoka uppercase shadow-[2px_2px_0px_#3D2B1F] active:shadow-none active:translate-y-[2px]">🔍</button>
+        </div>
+        <div id="tracking_result" class="hidden mt-3 text-center font-bold text-sm"></div>
+    </div>
+
+    <div id="menu_container" class="mb-8">
+        <h2 class="font-fredoka text-3xl text-center mb-1">NUESTRA CARTA</h2>
+        <p class="text-xs text-center font-bold mb-4 opacity-70">Salsas: 2 gratis, adicionales +$500 c/u.</p>
+        <div id="menu_render" class="space-y-6"></div>
+    </div>
+
+    <div id="checkout" class="bg-white border-4 border-hb-text rounded-[30px] p-5 shadow-[4px_4px_0px_#3D2B1F]">
+        <h2 class="font-fredoka text-2xl text-center mb-4">TU PEDIDO</h2>
+        
+        <div id="cart_render" class="mb-4 space-y-2 empty:hidden"></div>
+        <p id="empty_cart_msg" class="text-center text-sm font-bold opacity-50 mb-4">El carrito está vacío.</p>
+
+        <hr class="border-hb-text border-t-2 border-dashed my-4">
+        
+        <p class="text-center text-xs font-bold mb-3">📋 DATOS GENERALES</p>
+        
+        <input type="text" id="client_name" class="w-full bg-hb-input/20 border-2 border-hb-text rounded-full px-4 py-3 font-bold mb-3 focus:outline-none" placeholder="TU NOMBRE">
+        <input type="tel" id="client_phone" class="w-full bg-hb-input/20 border-2 border-hb-text rounded-full px-4 py-3 font-bold mb-3 focus:outline-none" placeholder="CELULAR (10 Dígitos)">
+        
+        <select id="eat_location" class="w-full bg-hb-input/20 border-2 border-hb-text rounded-full px-4 py-3 font-bold mb-3 focus:outline-none">
+            <option value="local">Consumo en Local</option>
+            <option value="llevar">Para Llevar (+$2.000)</option>
+            <option value="domicilio">Domicilio (+$4.000 base)</option>
+        </select>
+        
+        <select id="payment_method" class="w-full bg-hb-input/20 border-2 border-hb-text rounded-full px-4 py-3 font-bold mb-3 focus:outline-none">
+            <option value="efectivo">Efectivo</option>
+            <option value="nequi">Nequi</option>
+            <option value="transferencia">Transferencia</option>
+        </select>
+
+        <textarea id="order_notes" rows="2" class="w-full bg-hb-input/20 border-2 border-hb-text rounded-2xl px-4 py-3 font-bold mb-3 focus:outline-none resize-none" placeholder="NOTAS: ¿Sin cebolla? ¿Alérgeno?"></textarea>
+        
+        <div class="flex justify-between items-center font-fredoka text-xl mb-4">
+            <span>TOTAL:</span>
+            <span id="live_total">$0</span>
+        </div>
+        
+        <button onclick="processOrder()" class="w-full bg-hb-cta border-2 border-hb-text rounded-full py-4 font-fredoka text-lg shadow-[4px_4px_0px_#3D2B1F] active:shadow-none active:translate-y-[4px] uppercase">ENVIAR A WHATSAPP 🚀</button>
+    </div>
+</div>
+
+<div id="product_modal" class="fixed inset-0 bg-black/60 z-50 hidden flex-col justify-end">
+    <div class="bg-hb-bg border-t-4 border-hb-text rounded-t-[30px] p-5 w-full max-w-md mx-auto max-h-[85vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-4">
+            <div>
+                <h3 id="modal_product_name" class="font-fredoka text-2xl">Producto</h3>
+                <p id="modal_product_price" class="font-bold text-lg text-hb-primary">$0</p>
+            </div>
+            <button onclick="closeModal()" class="font-fredoka text-xl text-hb-text hover:text-red-500">X</button>
+        </div>
+
+        <input type="hidden" id="modal_current_item">
+
+        <div class="mb-6">
+            <h4 class="font-bold text-sm mb-2 border-b-2 border-hb-text/20 pb-1">ADICIONES (Opcional)</h4>
+            <div id="modal_addons_render" class="space-y-2"></div>
+        </div>
+
+        <div class="mb-6">
+            <h4 class="font-bold text-sm mb-2 border-b-2 border-hb-text/20 pb-1 flex justify-between">
+                <span>SALSAS</span>
+                <span class="text-xs text-red-600">2 Gratis, extra +$500</span>
+            </h4>
+            <div id="modal_sauces_render" class="grid grid-cols-2 gap-2"></div>
+            <p id="sauce_warning" class="text-xs text-red-600 font-bold mt-2 hidden">¡Cobro extra activado por salsas adicionales!</p>
+        </div>
+
+        <button onclick="confirmAddToCart()" class="w-full bg-hb-primary border-2 border-hb-text rounded-full py-4 font-fredoka text-lg shadow-[4px_4px_0px_#3D2B1F] active:shadow-none active:translate-y-[4px] flex justify-between px-6">
+            <span>AÑADIR</span>
+            <span id="modal_btn_price">$0</span>
+        </button>
+    </div>
+</div>
+
+<script>
+    // BASE DE DATOS KERNEL
+    const database = {
+        config: { delivery_fee: 2000, packaging_fee: 2000, extra_sauce_price: 500 },
+        addons: [
+            { id: "a1", name: "Papas", price: 4000 }, { id: "a2", name: "Tocineta", price: 4000 },
+            { id: "a3", name: "Pollo Desmechado", price: 5000 }, { id: "a4", name: "Carne Desmechada", price: 5000 },
+            { id: "a5", name: "Chorizo", price: 6000 }, { id: "a6", name: "Butifarra", price: 900 },
+            { id: "a7", name: "Queso", price: 2000 }, { id: "a8", name: "Piña", price: 1500 }
+        ],
+        sauces: ["Rosada", "Ajo", "Maíz", "Tomate", "Tártara", "BBQ", "Piña", "Guacamole"],
+        menu: [
+            {
+                category: "Hamburguesas",
+                items: [
+                    { id: "h1", name: "Burger Prime", price: 19000 },
+                    { id: "h2", name: "Burger Hawaiana", price: 20000 },
+                    { id: "h3", name: "Burger Trucker Doble", price: 25000 },
+                    { id: "hc1", name: "Combo Doble Prime", price: 40000 }
+                ]
+            },
+            {
+                category: "Carnes Asadas",
+                items: [
+                    { id: "c1", name: "Home Ribs", price: 32000 },
+                    { id: "c2", name: "Pechuga en Champiñón", price: 29000 }
+                ]
+            },
+            {
+                category: "Papas y Picadas",
+                items: [
+                    { id: "p1", name: "Papas Ranger", price: 10000 },
+                    { id: "p2", name: "Papas Locas", price: 26000 },
+                    { id: "p3", name: "Vikinga", price: 47000 }
+                ]
+            },
+            {
+                category: "Perros, Patacones y Burritos",
+                items: [
+                    { id: "pe1", name: "Perro", price: 20000 },
+                    { id: "pe2", name: "Perra", price: 20000 },
+                    { id: "pt1", name: "Patacón", price: 20000 }
+                ]
+            },
+            {
+                category: "Bebidas",
+                items: [
+                    { id: "b1", name: "Jugo (Agua)", price: 6000 },
+                    { id: "b2", name: "Jugo (Leche)", price: 7000 },
+                    { id: "b3", name: "Limonada Natural", price: 5000 },
+                    { id: "b4", name: "Gaseosa 400ml", price: 4000 }
+                ]
+            }
+        ]
+    };
+
+    // ESTADO DEL SISTEMA
+    let cart = [];
+    let currentModalItem = null;
+
+    // INICIALIZACIÓN DE LA UI
+    function init() {
+        const menuContainer = document.getElementById('menu_render');
+        let html = '';
+        
+        database.menu.forEach(cat => {
+            html += `
+                <div class="mb-4">
+                    <h3 class="font-fredoka text-xl mb-3 bg-white border-2 border-hb-text rounded-full py-1 px-4 inline-block shadow-[2px_2px_0px_#3D2B1F]">${cat.category}</h3>
+                    <div class="grid gap-3">
+            `;
+            cat.items.forEach(item => {
+                const itemData = encodeURIComponent(JSON.stringify(item));
+                html += `
+                    <div class="bg-white/60 border-2 border-dashed border-hb-text rounded-2xl p-3 flex justify-between items-center hover:bg-white transition-colors">
+                        <div>
+                            <p class="font-bold text-lg leading-tight">${item.name}</p>
+                            <p class="text-hb-primary font-bold">$${item.price.toLocaleString('es-CO')}</p>
+                        </div>
+                        <button onclick="openModal('${itemData}')" class="bg-hb-text text-white rounded-full w-10 h-10 font-fredoka text-xl flex items-center justify-center shadow-sm active:scale-95">+</button>
+                    </div>
+                `;
+            });
+            html += `</div></div>`;
+        });
+        menuContainer.innerHTML = html;
+        
+        document.getElementById('eat_location').addEventListener('change', updateCartUI);
+    }
+
+    // MODAL LOGIC
+    function openModal(itemDataEncoded) {
+        currentModalItem = JSON.parse(decodeURIComponent(itemDataEncoded));
+        
+        document.getElementById('modal_product_name').innerText = currentModalItem.name;
+        document.getElementById('modal_product_price').innerText = `$${currentModalItem.price.toLocaleString('es-CO')}`;
+        
+        let addonsHtml = '';
+        database.addons.forEach(addon => {
+            addonsHtml += `
+                <label class="flex justify-between items-center bg-white/50 border border-hb-text/20 rounded-xl p-2 cursor-pointer">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" class="addon-check" value='${JSON.stringify(addon)}' onchange="calculateModalPrice()">
+                        <span class="font-bold text-sm">${addon.name}</span>
+                    </div>
+                    <span class="text-xs font-bold text-hb-primary">+$${addon.price.toLocaleString('es-CO')}</span>
+                </label>
+            `;
+        });
+        document.getElementById('modal_addons_render').innerHTML = addonsHtml;
+
+        let saucesHtml = '';
+        database.sauces.forEach(sauce => {
+            saucesHtml += `
+                <label class="flex items-center gap-2 bg-white/50 border border-hb-text/20 rounded-xl p-2 cursor-pointer">
+                    <input type="checkbox" class="sauce-check" value="${sauce}" onchange="calculateModalPrice()">
+                    <span class="font-bold text-xs">${sauce}</span>
+                </label>
+            `;
+        });
+        document.getElementById('modal_sauces_render').innerHTML = saucesHtml;
+
+        calculateModalPrice();
+        
+        document.getElementById('product_modal').classList.remove('hidden');
+        document.getElementById('product_modal').classList.add('flex');
+        document.body.classList.add('no-scroll');
+    }
+
+    function closeModal() {
+        document.getElementById('product_modal').classList.add('hidden');
+        document.getElementById('product_modal').classList.remove('flex');
+        document.body.classList.remove('no-scroll');
+        currentModalItem = null;
+    }
+
+    function calculateModalPrice() {
+        let total = currentModalItem.price;
+        
+        document.querySelectorAll('.addon-check:checked').forEach(cb => {
+            let addon = JSON.parse(cb.value);
+            total += addon.price;
+        });
+
+        const sauceCount = document.querySelectorAll('.sauce-check:checked').length;
+        let extraSauceCost = 0;
+        if (sauceCount > 2) {
+            extraSauceCost = (sauceCount - 2) * database.config.extra_sauce_price;
+            total += extraSauceCost;
+            document.getElementById('sauce_warning').classList.remove('hidden');
+        } else {
+            document.getElementById('sauce_warning').classList.add('hidden');
+        }
+
+        document.getElementById('modal_btn_price').innerText = `$${total.toLocaleString('es-CO')}`;
+        return { total, extraSauceCost };
+    }
+
+    function confirmAddToCart() {
+        const { total, extraSauceCost } = calculateModalPrice();
+        
+        let selectedAddons = [];
+        document.querySelectorAll('.addon-check:checked').forEach(cb => {
+            selectedAddons.push(JSON.parse(cb.value));
+        });
+
+        let selectedSauces = [];
+        document.querySelectorAll('.sauce-check:checked').forEach(cb => {
+            selectedSauces.push(cb.value);
+        });
+
+        const cartItem = {
+            baseItem: currentModalItem,
+            addons: selectedAddons,
+            sauces: selectedSauces,
+            extraSauceCost: extraSauceCost,
+            finalPrice: total
+        };
+
+        cart.push(cartItem);
+        closeModal();
+        updateCartUI();
+        
+        if(cart.length === 1) {
+            document.getElementById('checkout').scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    // CARRO Y CÁLCULO FINAL
+    function updateCartUI() {
+        const cartContainer = document.getElementById('cart_render');
+        const emptyMsg = document.getElementById('empty_cart_msg');
+        
+        if (cart.length === 0) {
+            cartContainer.innerHTML = '';
+            emptyMsg.classList.remove('hidden');
+            document.getElementById('live_total').innerText = '$0';
+            return;
+        }
+
+        emptyMsg.classList.add('hidden');
+        let html = '';
+        let subtotal = 0;
+
+        cart.forEach((item, index) => {
+            subtotal += item.finalPrice;
+            
+            let addonsText = item.addons.map(a => a.name).join(', ');
+            let saucesText = item.sauces.join(', ');
+            
+            html += `
+                <div class="bg-hb-input/10 border border-hb-text rounded-xl p-3 flex justify-between items-start">
+                    <div class="w-5/6">
+                        <p class="font-bold leading-tight">${item.baseItem.name} <span class="text-hb-primary text-sm">($${item.baseItem.price.toLocaleString('es-CO')})</span></p>
+                        ${addonsText ? `<p class="text-xs text-hb-text/70 mt-1">➕ ${addonsText}</p>` : ''}
+                        ${saucesText ? `<p class="text-xs text-hb-text/70">🌶️ ${saucesText} ${item.extraSauceCost > 0 ? `(Extra: $${item.extraSauceCost})` : ''}</p>` : ''}
+                        <p class="font-bold text-sm mt-1">Total Item: $${item.finalPrice.toLocaleString('es-CO')}</p>
+                    </div>
+                    <button onclick="removeFromCart(${index})" class="text-red-500 font-bold text-xl px-2">🗑️</button>
+                </div>
+            `;
+        });
+
+        cartContainer.innerHTML = html;
+
+        const location = document.getElementById('eat_location').value;
+        let grandTotal = subtotal;
+        
+        if (location === 'llevar') grandTotal += database.config.packaging_fee;
+        if (location === 'domicilio') grandTotal += (database.config.packaging_fee + database.config.delivery_fee);
+
+        document.getElementById('live_total').innerText = `$${grandTotal.toLocaleString('es-CO')}`;
+    }
+
+    function removeFromCart(index) {
+        cart.splice(index, 1);
+        updateCartUI();
+    }
+
+    // RASTREO
+    function trackOrder() {
+        const id = document.getElementById('tracking_id').value;
+        const result = document.getElementById('tracking_result');
+        if (!id) {
+            result.innerText = "❌ Ingresa un número de turno.";
+            result.className = "mt-3 text-center font-bold text-sm text-red-600";
+        } else {
+            result.innerText = `✅ Turno #${id}: Consultando servidor...`;
+            result.className = "mt-3 text-center font-bold text-sm text-green-600";
+        }
+        result.classList.remove('hidden');
+    }
+
+    // PROCESAMIENTO A WHATSAPP
+    function processOrder() {
+        const name = document.getElementById('client_name').value.trim();
+        const phone = document.getElementById('client_phone').value.trim();
+        const location = document.getElementById('eat_location');
+        const payment = document.getElementById('payment_method');
+        const notes = document.getElementById('order_notes').value.trim();
+        
+        if (cart.length === 0) {
+            alert("El carrito está vacío. Añade productos primero.");
+            return;
+        }
+        if (!name || phone.length < 10) {
+            alert("Por favor, ingresa tu nombre y un celular válido (10 dígitos).");
+            return;
+        }
+
+        let total = parseInt(document.getElementById('live_total').innerText.replace(/\$|\./g, ''));
+
+        let text = `*NUEVA ORDEN - ELA OS* 🍔\n`;
+        text += `👤 Cliente: ${name}\n`;
+        text += `📱 Cel: ${phone}\n`;
+        text += `📍 Método: ${location.options[location.selectedIndex].text}\n`;
+        text += `💳 Pago: ${payment.options[payment.selectedIndex].text}\n\n`;
+        
+        text += `*--- DETALLE DEL PEDIDO ---*\n`;
+        cart.forEach((item, index) => {
+            text += `*${index + 1}. ${item.baseItem.name}* ($${item.finalPrice.toLocaleString('es-CO')})\n`;
+            if(item.addons.length > 0) {
+                text += `  ➕ Adiciones: ${item.addons.map(a => a.name).join(', ')}\n`;
+            }
+            if(item.sauces.length > 0) {
+                text += `  🌶️ Salsas: ${item.sauces.join(', ')}\n`;
+            }
+            text += `\n`;
+        });
+
+        if (notes) {
+            text += `📝 *Notas del cliente:* ${notes}\n\n`;
+        }
+
+        text += `*--- TOTAL A PAGAR: $${total.toLocaleString('es-CO')} ---*\n`;
+        text += `_Generado vía Menu Express RAKON_`;
+
+        const encodedText = encodeURIComponent(text);
+        const waNumber = "573242807989";
+        window.open(`https://wa.me/${waNumber}?text=${encodedText}`, '_blank');
+    }
+
+    init();
+</script>
+
+</body>
+</html>
